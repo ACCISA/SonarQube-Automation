@@ -113,7 +113,6 @@ def get_cyclomatic_complexity(path, project, trigger_tests, w, token):
     for test in tqdm(trigger_tests, desc=f"Calculating cyclomatic complexities for {project}", ncols=100):
         cwd = w+"/345/"+test
         status, output = execute_scanner(path,f"-Dsonar.projectKey=automated -Dsonar.sources=. -Dsonar.host.url=http://localhost:9000 -Dsonar.token={token} -Dsonar.java.binaries=target/classes".split(), cwd=cwd)
-        print(output)
         data = fetch_cyclomatic_complexity()
         print(data)
 
