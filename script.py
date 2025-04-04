@@ -162,6 +162,7 @@ def main():
     w = args.w
     user_token = args.t
     project_token = args.k
+    scanner = args.s
 
     if project not in AVAILABLE_PROJECTS:
         logging.error(f"{project} is not a project we decided to work on")
