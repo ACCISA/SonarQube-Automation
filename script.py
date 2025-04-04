@@ -13,7 +13,8 @@ DEFECTS4J_COMPILE = "compile"
 DEFECTS4J_TEST = "test"
 DEFECTS4J_COVERAGE = "coverage"
 DEFECTS4J_PATH_TEST = "info -p Lang"
-
+user_token = None
+project_token = None
 logging.basicConfig(
     level=logging.DEBUG,  # Set logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
     format="%(asctime)s - %(levelname)s - %(message)s",  # Log format
@@ -24,8 +25,10 @@ def arguments():
 
     parser.add_argument("-w", required=True,type=str, help="directory to create defects4j checkouts")
     parser.add_argument("-d", required=True,type=str, help="full defects4j binary path")
+    parser.add_argument("-s", required=True,type=str, help="full sonar-scanner binary path")
     parser.add_argument("-p", required=True,type=str, help="defects4j project to automate")
     parser.add_argument("-t", required=True,type=str, help="sonarqube user token")
+    parser.add_argument("-k", required=True,type=str, help="sonarqube project token")
 
     args = parser.parse_args()
 
@@ -41,6 +44,18 @@ def execute_command(path,command,cwd=None):
     stderr = result.stderr
 
     return (True,stderr+stdout)
+
+def execute_scanner(path,command,cwd=None):
+    if cwd is None:
+        result = subprocess.run([path+"/sonar-scanner"]+command, capture_output=True,text=True)
+    else:
+        result = subprocess.run([path+"/sonar-scanner"]+command, capture_output=True,text=True, cwd=cwd)
+
+    stdout = result.stdout
+    stderr = result.stderr
+
+    return (True,stderr+stdout)
+
 
 def test_defects4j_path(path):
     status, output = execute_command(path, DEFECTS4J_PATH_TEST.split())
@@ -69,6 +84,15 @@ def checkout_all_versions(path, project, trigger_tests, w):
         checkout = DEFECTS4J_CHECKOUT.format(project, test+"b", w+"/345/"+test)
         status, output = execute_command(path, checkout.split())
 
+def get_cyclomatic_complexity(path, project, trigger_tests, w, token):
+    complexities = {}
+
+    for test in tqdm(trigger_tests, desc=f"Calculating cyclomatic complexities for {project}", ncols=100):
+        cwd = w+"/345/"+test
+        status, output = execute_scanner(path,f"-Dsonar.projectKey=automated -Dsonar.sources=. -Dsonar.host.url=http://localhost:9000 -Dsonar.token={token} -Dsonar.java.binaries=target/classes".split(), cwd=cwd)
+
+    logging.info("Completed scanning versions")
+  
 def get_coverage(path, project, trigger_tests,w):
     coverages = {}
     for test in tqdm(trigger_tests, desc=f"Calculating coverages for {project}", ncols=100):
@@ -109,7 +133,7 @@ def fetch_cyclomatic_complexity(cookie):
     }
 
     cookies = {
-        'JWT-SESSION': cookie
+            'Authorization': f"Bearer {cookie}"
     }
 
     response = requests.get(url, headers=headers, cookies=cookies)
@@ -120,47 +144,16 @@ def fetch_cyclomatic_complexity(cookie):
         logging.error(f"Request failed with status code {response.status_code}")
         exit()
 
-def get_jwt_token(username, password):
-    url = "http://localhost:9000/api/authentication/login"
-
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0',
-        'Accept': 'application/json',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Referer': 'http://localhost:9000/sessions/new?return_to=%2F',
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Origin': 'http://localhost:9000',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Sec-Fetch-Dest': 'empty',
-        'Sec-Fetch-Mode': 'cors',
-        'Sec-Fetch-Site': 'same-origin'
-    }
-
-    form_data = {
-            "username":username,
-            "password":password
-    }
-
-    response = requests.post(url, headers=headers, data=form_data)
-    set_cookie_header = response.headers.get('Set-Cookie')
-    print(set_cookie_header)
-
 
 def main():
-
+    global user_token
+    global project_token
     args = arguments()
     project = args.p
     path = args.d
     w = args.w
-
-    print("Provide your sonarqube-server credentials to generate JWT Token")
-    print("Please make sure you've logged in once at localhost:9000")
-    username = input("Username:")
-    password = getpass.getpass("Password:")
-
-    get_jwt_token(username, password)
+    user_token = args.t
+    project_token = args.k
 
     if project not in AVAILABLE_PROJECTS:
         logging.error(f"{project} is not a project we decided to work on")
@@ -178,6 +171,9 @@ def main():
     get_coverage(path, project, trigger_tests, w)
 
     compile_all_versions(path, project, trigger_tests, w)
+    
+    get_cyclomatic_complexity(scanner, project, trigger_tests,  w, project_token)
+
 
 
 main()
