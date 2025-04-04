@@ -84,12 +84,40 @@ def checkout_all_versions(path, project, trigger_tests, w):
         checkout = DEFECTS4J_CHECKOUT.format(project, test+"b", w+"/345/"+test)
         status, output = execute_command(path, checkout.split())
 
+def get_tests(w):
+    tests_path = w+"/345/"
+    return sorted(os.listdir(tests_path))
+
+def fetch_cyclomatic_complexity():
+    global user_token
+    url = "http://localhost:9000/api/measures/component?additionalFields=period%2Cmetrics&component=a&metricKeys=complexity"
+
+    headers = {
+        'Content-Type': 'application/json'
+    }
+
+    cookies = {
+            'Authorization': f"Bearer {user_token}"
+    }
+
+    response = requests.get(url, headers=headers, cookies=cookies)
+
+    if response.status_code == 200:
+        return response.json()  # Return the JSON response
+    else:
+        logging.error(f"Request failed with status code {response.status_code}")
+        exit()
+
+
 def get_cyclomatic_complexity(path, project, trigger_tests, w, token):
     complexities = {}
 
     for test in tqdm(trigger_tests, desc=f"Calculating cyclomatic complexities for {project}", ncols=100):
         cwd = w+"/345/"+test
         status, output = execute_scanner(path,f"-Dsonar.projectKey=automated -Dsonar.sources=. -Dsonar.host.url=http://localhost:9000 -Dsonar.token={token} -Dsonar.java.binaries=target/classes".split(), cwd=cwd)
+        data = fetch_cyclomatic_complexity()
+        print(data)
+
 
     logging.info("Completed scanning versions")
   
@@ -123,27 +151,7 @@ def compile_all_versions(path, project, trigger_tests, w):
     for test in tqdm(trigger_tests, desc=f"Compiling versions for {project}", ncols=100):
         cwd = w+"/345/"+test
         status, output = execute_command(path, DEFECTS4J_COMPILE.split(), cwd=cwd)
-        logging.info(output)
-
-def fetch_cyclomatic_complexity(cookie):
-    url = "http://localhost:9000/api/measures/component?additionalFields=period%2Cmetrics&component=a&metricKeys=complexity"
-
-    headers = {
-        'Content-Type': 'application/json'
-    }
-
-    cookies = {
-            'Authorization': f"Bearer {cookie}"
-    }
-
-    response = requests.get(url, headers=headers, cookies=cookies)
-
-    if response.status_code == 200:
-        return response.json()  # Return the JSON response
-    else:
-        logging.error(f"Request failed with status code {response.status_code}")
-        exit()
-
+    logging.info("Completed compilation of all versions")
 
 def main():
     global user_token
@@ -167,6 +175,7 @@ def main():
         return
     
     checkout_all_versions(path, project, trigger_tests, w)
+    trigger_tests = get_tests(w)
 
     get_coverage(path, project, trigger_tests, w)
 
