@@ -90,17 +90,15 @@ def get_tests(w):
 
 def fetch_cyclomatic_complexity():
     global user_token
-    url = "http://localhost:9000/api/measures/component?additionalFields=period%2Cmetrics&component=a&metricKeys=complexity"
+    url = "http://localhost:9000/api/measures/component?additionalFields=period%2Cmetrics&component=automated&metricKeys=complexity"
 
     headers = {
-        'Content-Type': 'application/json'
-    }
-
-    cookies = {
+        'Content-Type': 'application/json',
             'Authorization': f"Bearer {user_token}"
     }
+    logging.info("user_token="+user_token)
 
-    response = requests.get(url, headers=headers, cookies=cookies)
+    response = requests.get(url, headers=headers)
 
     if response.status_code == 200:
         return response.json()  # Return the JSON response
@@ -115,6 +113,7 @@ def get_cyclomatic_complexity(path, project, trigger_tests, w, token):
     for test in tqdm(trigger_tests, desc=f"Calculating cyclomatic complexities for {project}", ncols=100):
         cwd = w+"/345/"+test
         status, output = execute_scanner(path,f"-Dsonar.projectKey=automated -Dsonar.sources=. -Dsonar.host.url=http://localhost:9000 -Dsonar.token={token} -Dsonar.java.binaries=target/classes".split(), cwd=cwd)
+        print(output)
         data = fetch_cyclomatic_complexity()
         print(data)
 
@@ -175,12 +174,12 @@ def main():
         logging.error("invalid defects4j bin path")
         return
     
-    checkout_all_versions(path, project, trigger_tests, w)
+    #checkout_all_versions(path, project, trigger_tests, w)
     trigger_tests = get_tests(w)
 
-    get_coverage(path, project, trigger_tests, w)
+    #get_coverage(path, project, trigger_tests, w)
 
-    compile_all_versions(path, project, trigger_tests, w)
+    #compile_all_versions(path, project, trigger_tests, w)
     
     get_cyclomatic_complexity(scanner, project, trigger_tests,  w, project_token)
 
