@@ -1,4 +1,7 @@
 import argparse
+import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
+import time
 import requests
 import re
 import subprocess
@@ -90,7 +93,7 @@ def get_tests(w):
 
 def fetch_cyclomatic_complexity():
     global user_token
-    url = "http://localhost:9000/api/measures/component?additionalFields=period%2Cmetrics&component=automated&metricKeys=complexity"
+    url = "http://localhost:9000/api/measures/component?additionalFields=period%2Cmetrics&component=a&metricKeys=complexity"
 
     headers = {
         'Content-Type': 'application/json',
@@ -112,12 +115,18 @@ def get_cyclomatic_complexity(path, project, trigger_tests, w, token):
 
     for test in tqdm(trigger_tests, desc=f"Calculating cyclomatic complexities for {project}", ncols=100):
         cwd = w+"/345/"+test
-        status, output = execute_scanner(path,f"-Dsonar.projectKey=automated -Dsonar.sources=. -Dsonar.host.url=http://localhost:9000 -Dsonar.token={token} -Dsonar.java.binaries=target/classes".split(), cwd=cwd)
+        status, output = execute_scanner(path,f"-Dsonar.projectKey=a -Dsonar.sources=. -Dsonar.host.url=http://localhost:9000 -Dsonar.token={token} -Dsonar.java.binaries=target/classes".split(), cwd=cwd)
+
+        logging.error(test)
+        logging.error(output)
+        time.sleep(5)
         data = fetch_cyclomatic_complexity()
-        print(data)
+        complexities[test] = data['component']['measures'][0]['value']
 
 
     logging.info("Completed scanning versions")
+    logging.info(complexities)
+    return complexities
   
 def get_coverage(path, project, trigger_tests,w):
     coverages = {}
@@ -143,6 +152,7 @@ def get_coverage(path, project, trigger_tests,w):
             "condition_coverage":condition_coverage
         }
     logging.info(coverages)
+    return coverages
 
 def compile_all_versions(path, project, trigger_tests, w):
 
@@ -150,6 +160,78 @@ def compile_all_versions(path, project, trigger_tests, w):
         cwd = w+"/345/"+test
         status, output = execute_command(path, DEFECTS4J_COMPILE.split(), cwd=cwd)
     logging.info("Completed compilation of all versions")
+
+def get_testing_time(path, project, trigger_tests, w):
+    logging.info(f"Getting testing times for project {project}")
+    delays = {}
+    for test in tqdm(trigger_tests, desc=f"Getting testing delays for {project}", ncols=100):
+        cwd = w+"/345/"+test
+        start_time = datetime.now()
+        status, output = execute_command(path, DEFECTS4J_TEST.split(), cwd=cwd)
+        end_time = datetime.now()
+        delay = end_time - start_time
+        delays[test] = delay
+
+    logging.info("Completed delay calculation")
+    logging.info(delays)
+    return delays
+
+def save_complexities_graph(project, complexities):
+
+    versions = sorted(complexities.keys(), key=lambda x: int(x))
+    x = [int(v) for v in versions]
+    y = [int(complexities[v]) for v in versions]
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(x, y, marker='o', linestyle='-', color='blue')
+    plt.title(f'Cyclomatic Complexity Over {project} Project Versions')
+    plt.xlabel('Version')
+    plt.ylabel('Cyclomatic Complexity')
+    plt.grid(True)
+    plt.xticks(x)
+    plt.tight_layout()
+
+    plt.savefig(f"{project}_cyclomatic_complexity.png")
+    logging.info(f"Graph saved as '{project}_cyclomatic_complexity.png'")
+
+def save_test_delays_graph(project, delays):
+    delays_in_seconds = {k: v.total_seconds() if isinstance(v, timedelta) else v for k, v in delays.items()}
+
+    sorted_versions = sorted(delays_in_seconds.items(), key=lambda x: int(x[0]))
+    versions = [v[0] for v in sorted_versions]
+    delay_values = [v[1] for v in sorted_versions]
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(versions, delay_values, marker='o', linestyle='-', color='purple')
+    plt.title('Delays Between Project Versions')
+    plt.xlabel('Version')
+    plt.ylabel('Delay (seconds)')
+    plt.grid(True)
+    plt.tight_layout()
+
+    plt.savefig(f"{project}_test_delays.png")
+    logging.info(f"Graph saved as '{project}_test_delays.png'")
+
+def save_coverage_graph(project, coverages):
+    sorted_items = sorted(coverages.items(), key=lambda x: x[0])
+    tests = [key for key, _ in sorted_items]
+    line_coverage = [val["line_coverage"] for _, val in sorted_items]
+    cond_coverage = [val["condition_coverage"] for _, val in sorted_items]
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(tests, line_coverage, marker='o', label='Line Coverage', color='blue')
+    plt.plot(tests, cond_coverage, marker='s', label='Condition Coverage', color='orange')
+
+    plt.title('Test Coverage Over Time')
+    plt.xlabel('Test')
+    plt.ylabel('Coverage (%)')
+    plt.ylim(0, 100)
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+
+    plt.savefig(f"{project}_coverage.png")
+    logging.info(f"Coverage graph saved as '{project}_coverage.png'")
 
 def main():
     global user_token
@@ -173,14 +255,23 @@ def main():
         logging.error("invalid defects4j bin path")
         return
     
-    #checkout_all_versions(path, project, trigger_tests, w)
+    checkout_all_versions(path, project, trigger_tests, w)
+    logging.info("Done checking out all versions")
     trigger_tests = get_tests(w)
+    logging.info("Updated test files")
+    logging.info(trigger_tests)
 
-    #get_coverage(path, project, trigger_tests, w)
+    coverages = get_coverage(path, project, trigger_tests, w)
 
-    #compile_all_versions(path, project, trigger_tests, w)
+    compile_all_versions(path, project, trigger_tests, w)
     
-    get_cyclomatic_complexity(scanner, project, trigger_tests,  w, project_token)
+    complexities = get_cyclomatic_complexity(scanner, project, trigger_tests,  w, project_token)
+
+    delays = get_testing_time(path, project, trigger_tests, w)
+
+    save_coverage_graph(project, coverages)
+    save_complexities_graph(project, complexities)
+    save_test_delays_graph(project, delays)
 
 
 
