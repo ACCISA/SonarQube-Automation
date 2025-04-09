@@ -23,6 +23,8 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",  # Log format
 )
 
+failures = []
+
 def arguments():
     parser = argparse.ArgumentParser(description="arguments to automate data collection")
 
@@ -93,7 +95,7 @@ def get_tests(w):
 
 def fetch_cyclomatic_complexity():
     global user_token
-    url = "http://localhost:9000/api/measures/component?additionalFields=period%2Cmetrics&component=a&metricKeys=complexity"
+    url = "http://localhost:9000/api/measures/component?additionalFields=period%2Cmetrics&component=automated&metricKeys=complexity"
 
     headers = {
         'Content-Type': 'application/json',
@@ -112,16 +114,21 @@ def fetch_cyclomatic_complexity():
 
 def get_cyclomatic_complexity(path, project, trigger_tests, w, token):
     complexities = {}
+    global failures
 
     for test in tqdm(trigger_tests, desc=f"Calculating cyclomatic complexities for {project}", ncols=100):
-        cwd = w+"/345/"+test
-        status, output = execute_scanner(path,f"-Dsonar.projectKey=a -Dsonar.sources=. -Dsonar.host.url=http://localhost:9000 -Dsonar.token={token} -Dsonar.java.binaries=target/classes".split(), cwd=cwd)
+        try:
+            cwd = w+"/345/"+test
+            status, output = execute_scanner(path,f"-Dsonar.projectKey=a -Dsonar.sources=. -Dsonar.host.url=http://localhost:9000 -Dsonar.token={token} -Dsonar.java.binaries=target/classes".split(), cwd=cwd)
 
-        logging.error(test)
-        logging.error(output)
-        time.sleep(5)
-        data = fetch_cyclomatic_complexity()
-        complexities[test] = data['component']['measures'][0]['value']
+            logging.error(test)
+            logging.error(output)
+            time.sleep(5)
+            data = fetch_cyclomatic_complexity()
+            complexities[test] = data['component']['measures'][0]['value']
+        except Exception as e:
+            failures.append(test)
+
 
 
     logging.info("Completed scanning versions")
@@ -129,28 +136,32 @@ def get_cyclomatic_complexity(path, project, trigger_tests, w, token):
     return complexities
   
 def get_coverage(path, project, trigger_tests,w):
+    global failures
     coverages = {}
     for test in tqdm(trigger_tests, desc=f"Calculating coverages for {project}", ncols=100):
-        cwd = w+"/345/"+test
-        status, output = execute_command(path, DEFECTS4J_COVERAGE.split(), cwd=cwd)
+        try:
+            cwd = w+"/345/"+test
+            status, output = execute_command(path, DEFECTS4J_COVERAGE.split(), cwd=cwd)
 
-        pattern = r"Lines total:\s*(\d+)\s*Lines covered:\s*(\d+)\s*Conditions total:\s*(\d+)\s*Conditions covered:\s*(\d+)\s*Line coverage:\s*([\d.]+)%\s*Condition coverage:\s*([\d.]+)%"
-        
-        match = re.search(pattern, output)
+            pattern = r"Lines total:\s*(\d+)\s*Lines covered:\s*(\d+)\s*Conditions total:\s*(\d+)\s*Conditions covered:\s*(\d+)\s*Line coverage:\s*([\d.]+)%\s*Condition coverage:\s*([\d.]+)%"
+            
+            match = re.search(pattern, output)
 
-        if match is None:
-            logging.error("Failed to capture coverage")
-            exit()
-        lines_total = int(match.group(1))
-        lines_covered = int(match.group(2))
-        conditions_total = int(match.group(3))
-        conditions_covered = int(match.group(4))
-        line_coverage = float(match.group(5))
-        condition_coverage = float(match.group(6))
-        coverages[test] = {
-            "line_coverage":line_coverage,
-            "condition_coverage":condition_coverage
-        }
+            if match is None:
+                logging.error("Failed to capture coverage")
+                exit()
+            lines_total = int(match.group(1))
+            lines_covered = int(match.group(2))
+            conditions_total = int(match.group(3))
+            conditions_covered = int(match.group(4))
+            line_coverage = float(match.group(5))
+            condition_coverage = float(match.group(6))
+            coverages[test] = {
+                "line_coverage":line_coverage,
+                "condition_coverage":condition_coverage
+            }
+        except Exception as e:
+            failures.append(test)
     logging.info(coverages)
     return coverages
 
@@ -162,15 +173,19 @@ def compile_all_versions(path, project, trigger_tests, w):
     logging.info("Completed compilation of all versions")
 
 def get_testing_time(path, project, trigger_tests, w):
+    global failures
     logging.info(f"Getting testing times for project {project}")
     delays = {}
     for test in tqdm(trigger_tests, desc=f"Getting testing delays for {project}", ncols=100):
-        cwd = w+"/345/"+test
-        start_time = datetime.now()
-        status, output = execute_command(path, DEFECTS4J_TEST.split(), cwd=cwd)
-        end_time = datetime.now()
-        delay = end_time - start_time
-        delays[test] = delay
+        try:
+            cwd = w+"/345/"+test
+            start_time = datetime.now()
+            status, output = execute_command(path, DEFECTS4J_TEST.split(), cwd=cwd)
+            end_time = datetime.now()
+            delay = end_time - start_time
+            delays[test] = delay
+        except Exception as e:
+            failures.append(test)
 
     logging.info("Completed delay calculation")
     logging.info(delays)
@@ -233,9 +248,23 @@ def save_coverage_graph(project, coverages):
     plt.savefig(f"{project}_coverage.png")
     logging.info(f"Coverage graph saved as '{project}_coverage.png'")
 
+def remove_failed_tests(coverages, complexities, delays):
+    global failures
+    for failure in failures:
+        try:
+            coverages.pop(failure,"")
+            complexities.pop(failure, "")
+            delays.pop(failure,"")
+        except Exception as e: 
+            continue
+    return coverages, complexities, delays
+
+
+
 def main():
     global user_token
     global project_token
+    global failures
     args = arguments()
     project = args.p
     path = args.d
@@ -268,7 +297,8 @@ def main():
     complexities = get_cyclomatic_complexity(scanner, project, trigger_tests,  w, project_token)
 
     delays = get_testing_time(path, project, trigger_tests, w)
-
+    logging.info(f"Ignoring failed measures for tests: {failures}")
+    coverages, complexities, delays = remove_failed_tests(coverages, complexities, delays)
     save_coverage_graph(project, coverages)
     save_complexities_graph(project, complexities)
     save_test_delays_graph(project, delays)
