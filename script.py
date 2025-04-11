@@ -95,7 +95,7 @@ def get_tests(w):
 
 def fetch_cyclomatic_complexity():
     global user_token
-    url = "http://localhost:9000/api/measures/component?additionalFields=period%2Cmetrics&component=automated&metricKeys=complexity"
+    url = "http://localhost:9000/api/measures/component?additionalFields=period%2Cmetrics&component=a&metricKeys=complexity"
 
     headers = {
         'Content-Type': 'application/json',
@@ -119,7 +119,7 @@ def get_cyclomatic_complexity(path, project, trigger_tests, w, token):
     for test in tqdm(trigger_tests, desc=f"Calculating cyclomatic complexities for {project}", ncols=100):
         try:
             cwd = w+"/345/"+test
-            status, output = execute_scanner(path,f"-Dsonar.projectKey=a -Dsonar.sources=. -Dsonar.host.url=http://localhost:9000 -Dsonar.token={token} -Dsonar.java.binaries=target/classes".split(), cwd=cwd)
+            status, output = execute_scanner(path,f"-Dsonar.projectKey=a -Dsonar.sources=. -Dsonar.host.url=http://localhost:9000 -Dsonar.token={token} -Dsonar.java.binaries=build/classes".split(), cwd=cwd)
 
             logging.error(test)
             logging.error(output)
@@ -127,7 +127,14 @@ def get_cyclomatic_complexity(path, project, trigger_tests, w, token):
             data = fetch_cyclomatic_complexity()
             complexities[test] = data['component']['measures'][0]['value']
         except Exception as e:
-            failures.append(test)
+            try:
+                status, output = execute_scanner(path,f"-Dsonar.projectKey=a -Dsonar.sources=. -Dsonar.host.url=http://localhost:9000 -Dsonar.token={token} -Dsonar.java.binaries=target/classes".split(), cwd=cwd)
+                time.sleep(5)
+                data = fetch_cyclomatic_complexity()
+                complexities[test] = data['component']['measures'][0]['value']
+            except Exception as e:
+                logging.error("netiher worked")
+                failures.append(test)
 
 
 
@@ -149,7 +156,6 @@ def get_coverage(path, project, trigger_tests,w):
 
             if match is None:
                 logging.error("Failed to capture coverage")
-                exit()
             lines_total = int(match.group(1))
             lines_covered = int(match.group(2))
             conditions_total = int(match.group(3))
@@ -284,22 +290,24 @@ def main():
         logging.error("invalid defects4j bin path")
         return
     
-    checkout_all_versions(path, project, trigger_tests, w)
+    #checkout_all_versions(path, project, trigger_tests, w)
     logging.info("Done checking out all versions")
     trigger_tests = get_tests(w)
     logging.info("Updated test files")
     logging.info(trigger_tests)
 
-    coverages = get_coverage(path, project, trigger_tests, w)
+    
+    #coverages = get_coverage(path, project, trigger_tests, w)
+    coverages = []
 
-    compile_all_versions(path, project, trigger_tests, w)
+    #compile_all_versions(path, project, trigger_tests, w)
     
     complexities = get_cyclomatic_complexity(scanner, project, trigger_tests,  w, project_token)
 
     delays = get_testing_time(path, project, trigger_tests, w)
-    logging.info(f"Ignoring failed measures for tests: {failures}")
+    logging.info(f"Ignoring gailed measures for tests: {failures}")
     coverages, complexities, delays = remove_failed_tests(coverages, complexities, delays)
-    save_coverage_graph(project, coverages)
+    #save_coverage_graph(project, coverages)
     save_complexities_graph(project, complexities)
     save_test_delays_graph(project, delays)
 
