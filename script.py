@@ -123,11 +123,28 @@ def get_cyclomatic_complexity(path, project, trigger_tests, w, token):
 
             logging.error(test)
             logging.error(output)
-            time.sleep(5)
+            print("aaaaa")
+            print("No files nor directories matching 'target/classes'" in output)
+            if "No files nor directories matching 'target/classes'" in output:
+                loggin.error("trying target")
+                raise Exception("aa")
+            time.sleep(3)
             data = fetch_cyclomatic_complexity()
             complexities[test] = data['component']['measures'][0]['value']
         except Exception as e:
-            failures.append(test)
+            logging.info("trying second option")
+            try:
+                print("running")
+                status, output = execute_scanner(path,f"-Dsonar.projectKey=a -Dsonar.sources=. -Dsonar.host.url=http://localhost:9000 -Dsonar.token={token} -Dsonar.java.binaries=build/classes".split(), cwd=cwd)
+                print("waiting")
+                logging.error(test)
+                logging.error(output)
+                time.sleep(3)
+                data = fetch_cyclomatic_complexity()
+                complexities[test] = data['component']['measures'][0]['value']
+            except Exception as e:
+                logging.error("netiher worked")
+                failures.append(test)
 
 
 
@@ -283,22 +300,24 @@ def main():
         logging.error("invalid defects4j bin path")
         return
     
-    checkout_all_versions(path, project, trigger_tests, w)
+    #checkout_all_versions(path, project, trigger_tests, w)
     logging.info("Done checking out all versions")
     trigger_tests = get_tests(w)
     logging.info("Updated test files")
     logging.info(trigger_tests)
 
-    coverages = get_coverage(path, project, trigger_tests, w)
+    
+    #coverages = get_coverage(path, project, trigger_tests, w)
+    coverages = []
 
-    compile_all_versions(path, project, trigger_tests, w)
+    #compile_all_versions(path, project, trigger_tests, w)
     
     complexities = get_cyclomatic_complexity(scanner, project, trigger_tests,  w, project_token)
 
     delays = get_testing_time(path, project, trigger_tests, w)
-    logging.info(f"Ignoring failed measures for tests: {failures}")
+    logging.info(f"Ignoring gailed measures for tests: {failures}")
     coverages, complexities, delays = remove_failed_tests(coverages, complexities, delays)
-    save_coverage_graph(project, coverages)
+    #save_coverage_graph(project, coverages)
     save_complexities_graph(project, complexities)
     save_test_delays_graph(project, delays)
 
