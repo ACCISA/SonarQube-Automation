@@ -123,6 +123,8 @@ def get_cyclomatic_complexity(path, project, trigger_tests, w, token):
 
             logging.error(test)
             logging.error(output)
+            if "No files nor directories matching 'build/classes'" in output:
+                raise Exception("aa")
             time.sleep(5)
             data = fetch_cyclomatic_complexity()
             complexities[test] = data['component']['measures'][0]['value']
