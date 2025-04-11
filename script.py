@@ -95,7 +95,7 @@ def get_tests(w):
 
 def fetch_cyclomatic_complexity():
     global user_token
-    url = "http://localhost:9000/api/measures/component?additionalFields=period%2Cmetrics&component=automated&metricKeys=complexity"
+    url = "http://localhost:9000/api/measures/component?additionalFields=period%2Cmetrics&component=a&metricKeys=complexity"
 
     headers = {
         'Content-Type': 'application/json',
@@ -149,7 +149,6 @@ def get_coverage(path, project, trigger_tests,w):
 
             if match is None:
                 logging.error("Failed to capture coverage")
-                exit()
             lines_total = int(match.group(1))
             lines_covered = int(match.group(2))
             conditions_total = int(match.group(3))
