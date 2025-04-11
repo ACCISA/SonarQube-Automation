@@ -119,18 +119,24 @@ def get_cyclomatic_complexity(path, project, trigger_tests, w, token):
     for test in tqdm(trigger_tests, desc=f"Calculating cyclomatic complexities for {project}", ncols=100):
         try:
             cwd = w+"/345/"+test
-            status, output = execute_scanner(path,f"-Dsonar.projectKey=a -Dsonar.sources=. -Dsonar.host.url=http://localhost:9000 -Dsonar.token={token} -Dsonar.java.binaries=build/classes".split(), cwd=cwd)
+            status, output = execute_scanner(path,f"-Dsonar.projectKey=a -Dsonar.sources=. -Dsonar.host.url=http://localhost:9000 -Dsonar.token={token} -Dsonar.java.binaries=target/classes".split(), cwd=cwd)
 
             logging.error(test)
             logging.error(output)
-            if "No files nor directories matching 'build/classes'" in output:
+            print("aaaaa")
+            print("No files nor directories matching 'target/classes'" in output)
+            if "No files nor directories matching 'target/classes'" in output:
+                loggin.error("trying target")
                 raise Exception("aa")
             time.sleep(5)
             data = fetch_cyclomatic_complexity()
             complexities[test] = data['component']['measures'][0]['value']
         except Exception as e:
+            logging.info("trying second option")
             try:
-                status, output = execute_scanner(path,f"-Dsonar.projectKey=a -Dsonar.sources=. -Dsonar.host.url=http://localhost:9000 -Dsonar.token={token} -Dsonar.java.binaries=target/classes".split(), cwd=cwd)
+                print("running")
+                status, output = execute_scanner(path,f"-Dsonar.projectKey=a -Dsonar.sources=. -Dsonar.host.url=http://localhost:9000 -Dsonar.token={token} -Dsonar.java.binaries=build/classes".split(), cwd=cwd)
+                print("waiting")
                 time.sleep(5)
                 data = fetch_cyclomatic_complexity()
                 complexities[test] = data['component']['measures'][0]['value']
