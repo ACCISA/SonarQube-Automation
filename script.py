@@ -128,7 +128,7 @@ def get_cyclomatic_complexity(path, project, trigger_tests, w, token):
             if "No files nor directories matching 'target/classes'" in output:
                 loggin.error("trying target")
                 raise Exception("aa")
-            time.sleep(5)
+            time.sleep(3)
             data = fetch_cyclomatic_complexity()
             complexities[test] = data['component']['measures'][0]['value']
         except Exception as e:
@@ -137,7 +137,9 @@ def get_cyclomatic_complexity(path, project, trigger_tests, w, token):
                 print("running")
                 status, output = execute_scanner(path,f"-Dsonar.projectKey=a -Dsonar.sources=. -Dsonar.host.url=http://localhost:9000 -Dsonar.token={token} -Dsonar.java.binaries=build/classes".split(), cwd=cwd)
                 print("waiting")
-                time.sleep(5)
+                logging.error(test)
+                logging.error(output)
+                time.sleep(3)
                 data = fetch_cyclomatic_complexity()
                 complexities[test] = data['component']['measures'][0]['value']
             except Exception as e:
